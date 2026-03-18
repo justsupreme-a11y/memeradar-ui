@@ -1,42 +1,27 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
-import MemeCard from "./components/MemeCard";
-import StatBar from "./components/StatBar";
-import FlowChart from "./components/FlowChart";
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-type Meme = {
-  id: number;
-  title: string;
-  url: string;
-  source: string;
-  platform: string;
-  image_url: string;
-  view_count: number;
-  like_count: number;
-  flow_type: string | null;
-  lifecycle_stage: string | null;
-  collected_at: string;
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const FLOW: Record<string, { label: string; color: string }> = {
+  inflow:      { label: "유입",   color: "#3b82f6" },
+  independent: { label: "독립",   color: "#10b981" },
+  export:      { label: "역수출", color: "#f97316" },
 };
 
-type Tab = "all" | "inflow" | "independent" | "export";
-
-const TABS: { key: Tab; label: string; color: string }[] = [
-  { key: "all",         label: "전체",           color: "#e8e8e8" },
-  { key: "inflow",      label: "해외 → 국내 유입", color: "#3b82f6" },
-  { key: "independent", label: "국내 독립 생성",   color: "#10b981" },
-  { key: "export",      label: "국내 → 해외 역수출", color: "#f97316" },
-];
-
-const STAGE_LABEL: Record<string, string> = {
-  seed:   "태동기",
-  spread: "확산기",
-  peak:   "고점",
-  fade:   "쇠퇴기",
+const STAGE: Record<string, { label: string; color: string }> = {
+  seed:   { label: "태동기", color: "#10b981" },
+  spread: { label: "확산기", color: "#3b82f6" },
+  peak:   { label: "고점",   color: "#f97316" },
+  fade:   { label: "쇠퇴기", color: "#6b6b6b" },
 };
 
-const SOURCE_LABEL: Record<string, string> = {
+const SOURCE: Record<string, string> = {
   reddit:   "Reddit",
   youtube:  "YouTube",
   ruliweb:  "루리웹",
@@ -46,124 +31,109 @@ const SOURCE_LABEL: Record<string, string> = {
   fmkorea:  "에펨코리아",
 };
 
+type Meme = {
+  id: number;
+  title: string;
+  url: string;
+  source: string;
+  view_count: number;
+  like_count: number;
+  flow_type: string | null;
+  lifecycle_stage: string | null;
+  collected_at: string;
+};
+
+type Tab = "all" | "inflow" | "independent" | "export";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "all",         label: "전체" },
+  { key: "inflow",      label: "해외→국내" },
+  { key: "independent", label: "국내 독립" },
+  { key: "export",      label: "역수출" },
+];
+
+function timeAgo(ts: string) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  if (h > 24) return `${Math.floor(h / 24)}일 전`;
+  if (h > 0)  return `${h}시간 전`;
+  return `${m}분 전`;
+}
+
 export default function Dashboard() {
-  const [memes, setMemes]         = useState<Meme[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [tab, setTab]             = useState<Tab>("all");
-  const [search, setSearch]       = useState("");
-  const [lastUpdated, setLastUpdated] = useState("");
+  const [memes, setMemes]     = useState<Meme[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab]         = useState<Tab>("all");
+  const [search, setSearch]   = useState("");
+  const [updated, setUpdated] = useState("");
 
-  const fetchMemes = useCallback(async () => {
-    setLoading(true);
-    let query = supabase
-      .from("memes")
-      .select("*")
-      .order("collected_at", { ascending: false })
-      .limit(200);
-
-    if (tab !== "all") {
-      query = query.eq("flow_type", tab);
+  useEffect(() => {
+    async function fetch() {
+      setLoading(true);
+      let q = supabase
+        .from("memes")
+        .select("*")
+        .order("collected_at", { ascending: false })
+        .limit(200);
+      if (tab !== "all") q = q.eq("flow_type", tab);
+      const { data } = await q;
+      setMemes(data || []);
+      setUpdated(new Date().toLocaleTimeString("ko-KR"));
+      setLoading(false);
     }
-
-    const { data } = await query;
-    setMemes(data || []);
-    setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
-    setLoading(false);
+    fetch();
   }, [tab]);
-
-  useEffect(() => { fetchMemes(); }, [fetchMemes]);
 
   const filtered = memes.filter(m =>
     search ? m.title.toLowerCase().includes(search.toLowerCase()) : true
   );
 
-  // 통계
   const stats = {
     total:       memes.length,
     inflow:      memes.filter(m => m.flow_type === "inflow").length,
     independent: memes.filter(m => m.flow_type === "independent").length,
     export:      memes.filter(m => m.flow_type === "export").length,
-    seed:        memes.filter(m => m.lifecycle_stage === "seed").length,
-    spread:      memes.filter(m => m.lifecycle_stage === "spread").length,
-    peak:        memes.filter(m => m.lifecycle_stage === "peak").length,
   };
 
   return (
-    <div className="min-h-screen bg-bg text-primary">
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#e8e8e8", fontFamily: "monospace" }}>
 
       {/* 헤더 */}
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 bg-bg z-10">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-lg tracking-tight">밈레이더</span>
-          <span className="flex items-center gap-1.5 text-xs text-dim font-mono">
-            <span className="live-dot w-1.5 h-1.5 rounded-full bg-indep inline-block" />
-            LIVE
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-xs text-dim font-mono">
-          <span>업데이트 {lastUpdated}</span>
-          <button
-            onClick={fetchMemes}
-            className="px-3 py-1 border border-border rounded text-soft hover:border-muted hover:text-primary transition-colors"
-          >
-            새로고침
-          </button>
-        </div>
-      </header>
+      <div style={{ borderBottom: "1px solid #1e1e1e", padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#0a0a0a", zIndex: 10 }}>
+        <span style={{ fontSize: "1.1rem", letterSpacing: "-0.02em" }}>밈레이더</span>
+        <span style={{ fontSize: "0.75rem", color: "#6b6b6b" }}>업데이트 {updated}</span>
+      </div>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <div style={{ maxWidth: "900px", margin: "0 auto", padding: "2rem 1.5rem" }}>
 
-        {/* 통계 카드 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        {/* 통계 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem", marginBottom: "1.5rem" }}>
           {[
-            { label: "전체 밈",   value: stats.total,       color: "#e8e8e8" },
-            { label: "해외 유입", value: stats.inflow,      color: "#3b82f6" },
-            { label: "국내 독립", value: stats.independent, color: "#10b981" },
-            { label: "역수출",   value: stats.export,      color: "#f97316" },
+            { label: "전체",    value: stats.total,       color: "#e8e8e8" },
+            { label: "유입",    value: stats.inflow,      color: "#3b82f6" },
+            { label: "독립",    value: stats.independent, color: "#10b981" },
+            { label: "역수출",  value: stats.export,      color: "#f97316" },
           ].map(s => (
-            <div key={s.label} className="bg-surface border border-border rounded-xl p-4 fade-up">
-              <div className="text-xs text-dim font-mono mb-1">{s.label}</div>
-              <div className="text-2xl font-mono font-light" style={{ color: s.color }}>
-                {s.value}
-              </div>
+            <div key={s.label} style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: "12px", padding: "1rem" }}>
+              <div style={{ fontSize: "0.7rem", color: "#6b6b6b", marginBottom: "0.25rem" }}>{s.label}</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 300, color: s.color }}>{s.value}</div>
             </div>
           ))}
         </div>
 
-        {/* 확산 현황 바 */}
-        <div className="bg-surface border border-border rounded-xl p-4 mb-6">
-          <div className="text-xs text-dim font-mono mb-3">생애주기 분포</div>
-          <div className="flex gap-2 items-center">
-            {[
-              { key: "seed",   label: "태동기", color: "#10b981", count: stats.seed },
-              { key: "spread", label: "확산기", color: "#3b82f6", count: stats.spread },
-              { key: "peak",   label: "고점",   color: "#f97316", count: stats.peak },
-              { key: "fade",   label: "쇠퇴기", color: "#3a3a3a",
-                count: stats.total - stats.seed - stats.spread - stats.peak },
-            ].map(s => (
-              <StatBar key={s.key} {...s} total={stats.total} />
-            ))}
-          </div>
-        </div>
-
-        {/* 플로우 차트 */}
-        <div className="bg-surface border border-border rounded-xl p-4 mb-6">
-          <div className="text-xs text-dim font-mono mb-3">소스별 수집 현황</div>
-          <FlowChart memes={memes} />
-        </div>
-
         {/* 탭 */}
-        <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1">
+        <div style={{ display: "flex", gap: "0.25rem", background: "#111", border: "1px solid #1e1e1e", borderRadius: "12px", padding: "0.25rem", marginBottom: "1rem" }}>
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex-1 py-2 text-xs font-mono rounded-lg transition-all ${
-                tab === t.key
-                  ? "bg-border text-primary"
-                  : "text-dim hover:text-soft"
-              }`}
-              style={tab === t.key ? { color: t.color } : {}}
+              style={{
+                flex: 1, padding: "0.5rem", fontSize: "0.75rem", border: "none", borderRadius: "8px", cursor: "pointer",
+                background: tab === t.key ? "#1e1e1e" : "transparent",
+                color: tab === t.key ? "#e8e8e8" : "#6b6b6b",
+                transition: "all 0.15s",
+              }}
             >
               {t.label}
             </button>
@@ -176,28 +146,65 @@ export default function Dashboard() {
           placeholder="밈 제목 검색..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm font-mono text-soft placeholder-muted focus:outline-none focus:border-muted mb-4 transition-colors"
+          style={{
+            width: "100%", background: "#111", border: "1px solid #1e1e1e", borderRadius: "12px",
+            padding: "0.75rem 1rem", fontSize: "0.875rem", color: "#a0a0a0",
+            outline: "none", marginBottom: "1rem", fontFamily: "monospace",
+          }}
         />
 
-        {/* 밈 목록 */}
+        {/* 목록 */}
         {loading ? (
-          <div className="text-center text-dim font-mono py-20 text-sm">로딩 중...</div>
+          <div style={{ textAlign: "center", color: "#6b6b6b", padding: "4rem", fontSize: "0.875rem" }}>로딩 중...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center text-dim font-mono py-20 text-sm">데이터 없음</div>
+          <div style={{ textAlign: "center", color: "#6b6b6b", padding: "4rem", fontSize: "0.875rem" }}>데이터 없음</div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {filtered.map((meme, i) => (
-              <MemeCard
-                key={meme.id}
-                meme={meme}
-                index={i}
-                stageLabel={STAGE_LABEL[meme.lifecycle_stage || ""] || "—"}
-                sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
-              />
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {filtered.map((meme, i) => {
+              const flow  = FLOW[meme.flow_type || ""];
+              const stage = STAGE[meme.lifecycle_stage || ""];
+              return (
+                
+                  key={meme.id}
+                  href={meme.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "flex", alignItems: "center", gap: "0.75rem",
+                    background: "#111", border: "1px solid #1e1e1e", borderRadius: "12px",
+                    padding: "0.75rem 1rem", textDecoration: "none", transition: "border-color 0.15s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = "#3a3a3a")}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = "#1e1e1e")}
+                >
+                  <span style={{ fontSize: "0.7rem", color: "#3a3a3a", width: "1.5rem", textAlign: "right", flexShrink: 0 }}>{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "0.875rem", color: "#e8e8e8", marginBottom: "0.2rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {meme.title}
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "#6b6b6b" }}>
+                      {SOURCE[meme.source] || meme.source} · {timeAgo(meme.collected_at)}
+                      {meme.view_count > 0 && ` · 조회 ${meme.view_count.toLocaleString()}`}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+                    {stage && (
+                      <span style={{ fontSize: "0.65rem", padding: "0.15rem 0.5rem", borderRadius: "4px", border: `1px solid ${stage.color}40`, color: stage.color, background: `${stage.color}10` }}>
+                        {stage.label}
+                      </span>
+                    )}
+                    {flow && (
+                      <span style={{ fontSize: "0.65rem", padding: "0.15rem 0.5rem", borderRadius: "4px", border: `1px solid ${flow.color}40`, color: flow.color, background: `${flow.color}10` }}>
+                        {flow.label}
+                      </span>
+                    )}
+                  </div>
+                </a>
+              );
+            })}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
