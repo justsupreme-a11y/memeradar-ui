@@ -64,8 +64,19 @@ export default function Page() {
     load();
   }, [tab]);
 
-  const list = memes.filter(m => search ? m.title.includes(search) : true);
+// 확산 속도 계산 (조회수 ÷ 경과시간(시간))
+const calcVelocity = (meme: Meme) => {
+  const hours = Math.max(
+    (Date.now() - new Date(meme.collected_at).getTime()) / 3600000,
+    1
+  );
+  return meme.view_count / hours;
+};
 
+const list = memes
+  .filter(m => search ? m.title.includes(search) : true)
+  .sort((a, b) => calcVelocity(b) - calcVelocity(a));
+  
   const s = {
     total: memes.length,
     inflow: memes.filter(m => m.flow_type === "inflow").length,
