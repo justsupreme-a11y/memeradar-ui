@@ -27,7 +27,8 @@ const SOURCE_LABEL: Record<string,string> = {
   reddit:"Reddit", kym:"KYM", wikipedia:"Wikipedia", google_trends:"구글 트렌드",
   hypebeast:"하입비스트KR", hypebeast_en:"하입비스트EN",
   gqkorea:"GQ코리아", cosmopolitan:"코스모폴리탄", vogue:"보그코리아", elle:"엘르코리아",
-  hsad:"HS애드", daehong:"대홍기획", opensurvey:"오픈서베이",
+  hsad:"HS애드", daehong:"대홍기획", opensurvey:"오픈서베이",dispatch: "디스패치",
+  dailyfashion: "데일리패션", mlbpark: "MLB파크", imgur: "Imgur",
 };
 
 const CAT_LABEL: Record<string,string> = {
