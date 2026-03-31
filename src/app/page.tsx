@@ -11,24 +11,24 @@ type Meme = {
   id: number; title: string; url: string;
   source: string; platform: string; category: string;
   view_count: number; like_count: number; collected_at: string;
+  flow_type: string | null;
 };
 
 type SortKey = "view_count" | "collected_at";
+type PlatformFilter = "all" | "domestic" | "inflow";
 
 const VIDEO_SOURCES   = new Set(["youtube_trending","youtube_shorts","youtube_meme_ch"]);
-const ARTICLE_SOURCES = new Set(["instiz","theqoo","pannate","gogumafarm","univ_tomorrow",
-  "kym","wikipedia","google_trends","reddit","hypebeast","hypebeast_en",
-  "gqkorea","cosmopolitan","vogue","elle","hsad","daehong","opensurvey"]);
+const ARTICLE_SOURCES = new Set(["instiz","theqoo","pannate","gogumafarm",
+  "kym","google_trends","hypebeast","hypebeast_en",
+  "gqkorea","cosmopolitan","vogue","elle"]);
 
 const SOURCE_LABEL: Record<string,string> = {
   youtube_trending:"YT 급상승", youtube_shorts:"YT Shorts", youtube_meme_ch:"YT 밈채널",
   instiz:"인스티즈", theqoo:"더쿠", pannate:"네이트판",
-  gogumafarm:"고구마팜", univ_tomorrow:"대학내일",
-  reddit:"Reddit", kym:"KYM", wikipedia:"Wikipedia", google_trends:"구글 트렌드",
+  gogumafarm:"고구마팜",
+  kym:"KYM", google_trends:"구글 트렌드",
   hypebeast:"하입비스트KR", hypebeast_en:"하입비스트EN",
   gqkorea:"GQ코리아", cosmopolitan:"코스모폴리탄", vogue:"보그코리아", elle:"엘르코리아",
-  hsad:"HS애드", daehong:"대홍기획", opensurvey:"오픈서베이",dispatch: "디스패치",
-  dailyfashion: "데일리패션", mlbpark: "MLB파크", imgur: "Imgur",
 };
 
 const CAT_LABEL: Record<string,string> = {
@@ -53,29 +53,31 @@ function timeAgo(ts: string) {
 const PAGE_SIZE = 50;
 
 export default function Page() {
-  const [platform,  setPlatform]  = useState<"all"|"domestic"|"global">("all");
-  const [content,   setContent]   = useState<"all"|"video"|"article">("all");
-  const [category,  setCategory]  = useState("all");
-  const [sort,      setSort]      = useState<SortKey>("view_count");
-  const [memes,     setMemes]     = useState<Meme[]>([]);
-  const [stats,     setStats]     = useState({total:0, domestic:0, global:0});
-  const [loading,   setLoading]   = useState(true);
-  const [page,      setPage]      = useState(0);
-  const [totalCount,setTotal]     = useState(0);
-  const [search,    setSearch]    = useState("");
+  const [platform,   setPlatform]  = useState<PlatformFilter>("all");
+  const [content,    setContent]   = useState<"all"|"video"|"article">("all");
+  const [category,   setCategory]  = useState("all");
+  const [sort,       setSort]      = useState<SortKey>("view_count");
+  const [memes,      setMemes]     = useState<Meme[]>([]);
+  const [stats,      setStats]     = useState({total:0, domestic:0, inflow:0});
+  const [loading,    setLoading]   = useState(true);
+  const [page,       setPage]      = useState(0);
+  const [totalCount, setTotal]     = useState(0);
+  const [search,     setSearch]    = useState("");
 
+  // 통계
   useEffect(() => {
     async function s() {
-      const [t,d,g] = await Promise.all([
+      const [t, d, inf] = await Promise.all([
         supabase.from("memes").select("*",{count:"exact",head:true}),
         supabase.from("memes").select("*",{count:"exact",head:true}).eq("platform","domestic"),
-        supabase.from("memes").select("*",{count:"exact",head:true}).eq("platform","global"),
+        supabase.from("memes").select("*",{count:"exact",head:true}).eq("flow_type","inflow"),
       ]);
-      setStats({total:t.count||0, domestic:d.count||0, global:g.count||0});
+      setStats({total:t.count||0, domestic:d.count||0, inflow:inf.count||0});
     }
     s();
   }, []);
 
+  // 목록
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -85,11 +87,12 @@ export default function Page() {
         .gte("collected_at", cutoff)
         .order(sort, {ascending: false});
 
-      if (platform !== "all") q = q.eq("platform", platform);
-      if (content === "video")   q = q.in("source", Array.from(VIDEO_SOURCES));
-      if (content === "article") q = q.in("source", Array.from(ARTICLE_SOURCES));
-      if (category !== "all")    q = q.eq("category", category);
-      if (search)                q = q.ilike("title", `%${search}%`);
+      if (platform === "domestic") q = q.eq("platform", "domestic");
+      if (platform === "inflow")   q = q.eq("flow_type", "inflow");
+      if (content === "video")     q = q.in("source", Array.from(VIDEO_SOURCES));
+      if (content === "article")   q = q.in("source", Array.from(ARTICLE_SOURCES));
+      if (category !== "all")      q = q.eq("category", category);
+      if (search)                  q = q.ilike("title", `%${search}%`);
 
       q = q.range(page*PAGE_SIZE, (page+1)*PAGE_SIZE-1);
       const {data, count} = await q;
@@ -106,6 +109,7 @@ export default function Page() {
 
   const totalPages = Math.ceil(totalCount/PAGE_SIZE);
   const bg="#0a0a0a", surface="#111111", border="#1e1e1e", dim="#6b6b6b", soft="#a0a0a0", primary="#e8e8e8";
+  const inflowColor = "#f59e0b";
 
   return (
     <div style={{background:bg,minHeight:"100vh",color:primary,fontFamily:"monospace"}}>
@@ -119,9 +123,9 @@ export default function Page() {
         {/* 통계 */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"0.75rem",marginBottom:"1.5rem"}}>
           {[
-            {label:"전체 수집",value:stats.total,   color:primary},
-            {label:"국내",     value:stats.domestic,color:"#10b981"},
-            {label:"해외",     value:stats.global,  color:"#3b82f6"},
+            {label:"전체 수집",  value:stats.total,    color:primary},
+            {label:"국내",       value:stats.domestic, color:"#10b981"},
+            {label:"해외 유입",  value:stats.inflow,   color:inflowColor},
           ].map(x=>(
             <div key={x.label} style={{background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"1rem"}}>
               <div style={{fontSize:"0.7rem",color:dim,marginBottom:"0.25rem"}}>{x.label}</div>
@@ -130,18 +134,23 @@ export default function Page() {
           ))}
         </div>
 
-        {/* 국내/해외 */}
+        {/* 플랫폼 탭 */}
         <div style={{display:"flex",gap:"0.25rem",background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"0.25rem",marginBottom:"0.75rem"}}>
-          {[{key:"all",label:"전체"},{key:"domestic",label:"국내"},{key:"global",label:"해외"}].map(t=>(
-            <button key={t.key} onClick={()=>change(setPlatform,t.key as any)}
+          {[
+            {key:"all",      label:"전체"},
+            {key:"domestic", label:"국내"},
+            {key:"inflow",   label:"🌐 해외 유입"},
+          ].map(t=>(
+            <button key={t.key} onClick={()=>change(setPlatform, t.key as PlatformFilter)}
               style={{flex:1,padding:"0.5rem",fontSize:"0.75rem",border:"none",borderRadius:"8px",cursor:"pointer",
-                background:platform===t.key?border:"transparent",color:platform===t.key?primary:dim}}>
+                background:platform===t.key?border:"transparent",
+                color:platform===t.key?(t.key==="inflow"?inflowColor:primary):dim}}>
               {t.label}
             </button>
           ))}
         </div>
 
-        {/* 전체/영상/기사및정보 */}
+        {/* 전체/영상/기사 */}
         <div style={{display:"flex",gap:"0.25rem",background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"0.25rem",marginBottom:"0.75rem"}}>
           {[{key:"all",label:"전체"},{key:"video",label:"영상"},{key:"article",label:"기사 및 정보"}].map(t=>(
             <button key={t.key} onClick={()=>change(setContent,t.key as any)}
@@ -201,22 +210,36 @@ export default function Page() {
           <span>{totalCount.toLocaleString()}건 · {page+1}/{totalPages||1}페이지</span>
         </div>
 
+        {/* 해외 유입 탭 안내 */}
+        {platform === "inflow" && (
+          <div style={{fontSize:"0.7rem",color:inflowColor,marginBottom:"1rem",
+            padding:"0.5rem 0.75rem",border:`1px solid ${inflowColor}30`,
+            borderRadius:"8px",background:`${inflowColor}08`}}>
+            🌐 해외에서 먼저 등장해 국내로 유입된 밈이에요
+          </div>
+        )}
+
         {/* 목록 */}
         {loading ? (
           <div style={{textAlign:"center",color:dim,padding:"4rem",fontSize:"0.875rem"}}>로딩 중...</div>
         ) : memes.length===0 ? (
-          <div style={{textAlign:"center",color:dim,padding:"4rem",fontSize:"0.875rem"}}>데이터 없음</div>
+          <div style={{textAlign:"center",color:dim,padding:"4rem"}}>
+            <div style={{fontSize:"2rem",marginBottom:"0.75rem"}}>📡</div>
+            <div style={{fontSize:"0.875rem"}}>데이터 없음</div>
+          </div>
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
             {memes.map((m,i)=>{
               const catColor = CAT_COLOR[m.category]||dim;
               const isVideo  = VIDEO_SOURCES.has(m.source);
+              const isInflow = m.flow_type === "inflow";
               return (
                 <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
                   style={{display:"flex",alignItems:"center",gap:"0.75rem",background:surface,
-                    border:`1px solid ${border}`,borderRadius:"12px",padding:"0.75rem 1rem",textDecoration:"none"}}
-                  onMouseEnter={e=>(e.currentTarget.style.borderColor="#3a3a3a")}
-                  onMouseLeave={e=>(e.currentTarget.style.borderColor=border)}>
+                    border:`1px solid ${isInflow ? inflowColor+"30" : border}`,
+                    borderRadius:"12px",padding:"0.75rem 1rem",textDecoration:"none"}}
+                  onMouseEnter={e=>(e.currentTarget.style.borderColor=isInflow?inflowColor+"80":"#3a3a3a")}
+                  onMouseLeave={e=>(e.currentTarget.style.borderColor=isInflow?inflowColor+"30":border)}>
                   <span style={{fontSize:"0.7rem",color:"#3a3a3a",width:"2rem",textAlign:"right",flexShrink:0}}>
                     {page*PAGE_SIZE+i+1}
                   </span>
@@ -232,18 +255,20 @@ export default function Page() {
                     </div>
                   </div>
                   <div style={{display:"flex",gap:"0.4rem",flexShrink:0}}>
+                    {/* 전체/국내 탭에서만 inflow 뱃지 표시 */}
+                    {isInflow && platform !== "inflow" && (
+                      <span style={{fontSize:"0.65rem",padding:"0.15rem 0.5rem",borderRadius:"4px",
+                        border:`1px solid ${inflowColor}40`,color:inflowColor,
+                        background:`${inflowColor}10`}}>
+                        🌐 유입
+                      </span>
+                    )}
                     {m.category && m.category!=="general" && (
                       <span style={{fontSize:"0.65rem",padding:"0.15rem 0.5rem",borderRadius:"4px",
                         border:`1px solid ${catColor}40`,color:catColor,background:`${catColor}10`}}>
                         {CAT_LABEL[m.category]||m.category}
                       </span>
                     )}
-                    <span style={{fontSize:"0.65rem",padding:"0.15rem 0.5rem",borderRadius:"4px",
-                      border:`1px solid ${m.platform==="domestic"?"#10b98140":"#3b82f640"}`,
-                      color:m.platform==="domestic"?"#10b981":"#3b82f6",
-                      background:m.platform==="domestic"?"#10b98110":"#3b82f610"}}>
-                      {m.platform==="domestic"?"국내":"해외"}
-                    </span>
                   </div>
                 </a>
               );
