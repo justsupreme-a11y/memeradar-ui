@@ -21,9 +21,30 @@ type Props = {
   };
   index: number;
   sourceLabel: string;
+  velocityGrade: number; // 0~5
 };
 
-export default function MemeCard({ meme, index, sourceLabel }: Props) {
+// 불꽃 시각화: 등급에 따라 🔥 개수 + 색상
+function VelocityBadge({ grade }: { grade: number }) {
+  if (grade === 0) return null;
+  const flames = "🔥".repeat(Math.min(grade, 5));
+  const label = ["", "미온", "확산", "상승", "급상승", "폭발"][grade] || "";
+  return (
+    <span
+      className="text-xs font-mono px-2 py-0.5 rounded-md border"
+      style={{
+        color:           grade >= 4 ? "#f97316" : grade >= 2 ? "#eab308" : "#6b6b6b",
+        borderColor:     grade >= 4 ? "#f97316" : grade >= 2 ? "#eab308" : "#3a3a3a",
+        backgroundColor: grade >= 4 ? "#f9731618" : grade >= 2 ? "#eab30818" : "#3a3a3a18",
+      }}
+      title={`확산 속도 ${label} (${grade}/5)`}
+    >
+      {flames}
+    </span>
+  );
+}
+
+export default function MemeCard({ meme, index, sourceLabel, velocityGrade }: Props) {
   const [copied, setCopied] = useState(false);
   const flow = FLOW_META[meme.flow_type || ""] || null;
 
@@ -79,7 +100,10 @@ export default function MemeCard({ meme, index, sourceLabel }: Props) {
       {/* 뱃지 + 복사 버튼 */}
       <div className="flex items-center gap-2 flex-shrink-0">
 
-        {/* flow_type 뱃지 — title 속성으로 툴팁 */}
+        {/* velocity 불꽃 뱃지 */}
+        <VelocityBadge grade={velocityGrade} />
+
+        {/* flow_type 뱃지 */}
         {flow && (
           <span
             className="text-xs font-mono px-2 py-0.5 rounded-md border cursor-default"
