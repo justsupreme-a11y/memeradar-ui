@@ -15,16 +15,30 @@ type Meme = {
   view_count: number;
   like_count: number;
   flow_type: string | null;
+  velocity_score: number | null;
   collected_at: string;
 };
 
 type Tab = "all" | "domestic" | "inflow";
+type Period = "1d" | "3d" | "7d";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all",      label: "전체" },
   { key: "domestic", label: "국내" },
   { key: "inflow",   label: "🌐 해외 유입" },
 ];
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: "1d", label: "오늘" },
+  { key: "3d", label: "3일" },
+  { key: "7d", label: "1주" },
+];
+
+const PERIOD_HOURS: Record<Period, number> = {
+  "1d": 24,
+  "3d": 72,
+  "7d": 168,
+};
 
 const SOURCE_LABEL: Record<string, string> = {
   gogumafarm:            "고구마팜",
@@ -62,14 +76,21 @@ export default function Dashboard() {
   const [memes, setMemes]             = useState<Meme[]>([]);
   const [loading, setLoading]         = useState(true);
   const [tab, setTab]                 = useState<Tab>("all");
+  const [period, setPeriod]           = useState<Period>("1d");
   const [search, setSearch]           = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
 
   const fetchMemes = useCallback(async () => {
     setLoading(true);
+
+    const since = new Date(
+      Date.now() - PERIOD_HOURS[period] * 60 * 60 * 1000
+    ).toISOString();
+
     let query = supabase
       .from("memes")
       .select("*")
+      .gte("collected_at", since)
       .order("collected_at", { ascending: false })
       .limit(200);
 
@@ -83,13 +104,20 @@ export default function Dashboard() {
     setMemes(data || []);
     setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
     setLoading(false);
-  }, [tab]);
+  }, [tab, period]);
 
   useEffect(() => { fetchMemes(); }, [fetchMemes]);
 
   const filtered = memes.filter(m =>
     search ? m.title.toLowerCase().includes(search.toLowerCase()) : true
   );
+
+  // velocity_score 최대값 기준 1~5 등급 계산
+  const maxVelocity = Math.max(...memes.map(m => m.velocity_score || 0), 1);
+  const velocityGrade = (score: number | null): number => {
+    if (!score || maxVelocity === 0) return 0;
+    return Math.ceil((score / maxVelocity) * 5);
+  };
 
   const stats = {
     total:  memes.length,
@@ -162,7 +190,7 @@ export default function Dashboard() {
         </div>
 
         {/* 탭 */}
-        <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1">
+        <div className="flex gap-1 mb-3 bg-surface border border-border rounded-xl p-1">
           {TABS.map(t => (
             <button
               key={t.key}
@@ -174,6 +202,23 @@ export default function Dashboard() {
               }`}
             >
               {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 기간 필터 */}
+        <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1 w-fit">
+          {PERIODS.map(p => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              className={`px-4 py-1.5 text-xs font-mono rounded-lg transition-all ${
+                period === p.key
+                  ? "bg-border text-primary"
+                  : "text-dim hover:text-soft"
+              }`}
+            >
+              {p.label}
             </button>
           ))}
         </div>
@@ -212,6 +257,7 @@ export default function Dashboard() {
                 meme={meme}
                 index={i}
                 sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
+                velocityGrade={velocityGrade(meme.velocity_score)}
               />
             ))}
           </div>
