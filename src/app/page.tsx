@@ -1,306 +1,216 @@
 "use client";
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-);
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+import MemeCard from "./components/MemeCard";
+import FlowChart from "./components/FlowChart";
 
 type Meme = {
-  id: number; title: string; url: string;
-  source: string; platform: string; category: string;
-  view_count: number; like_count: number; collected_at: string;
+  id: number;
+  title: string;
+  url: string;
+  source: string;
+  platform: string;
+  image_url: string;
+  view_count: number;
+  like_count: number;
   flow_type: string | null;
+  collected_at: string;
 };
 
-type SortKey = "view_count" | "collected_at";
-type PlatformFilter = "all" | "domestic" | "inflow";
+type Tab = "all" | "domestic" | "inflow";
 
-const VIDEO_SOURCES   = new Set(["youtube_trending","youtube_shorts","youtube_meme_ch"]);
-const ARTICLE_SOURCES = new Set(["instiz","theqoo","pannate","gogumafarm",
-  "kym","google_trends","hypebeast","hypebeast_en",
-  "gqkorea","cosmopolitan","vogue","elle"]);
+const TABS: { key: Tab; label: string }[] = [
+  { key: "all",      label: "전체" },
+  { key: "domestic", label: "국내" },
+  { key: "inflow",   label: "🌐 해외 유입" },
+];
 
-const SOURCE_LABEL: Record<string,string> = {
-  youtube_trending:"YT 급상승", youtube_shorts:"YT Shorts", youtube_meme_ch:"YT 밈채널",
-  instiz:"인스티즈", theqoo:"더쿠", pannate:"네이트판",
-  gogumafarm:"고구마팜",
-  kym:"KYM", google_trends:"구글 트렌드",
-  hypebeast:"하입비스트KR", hypebeast_en:"하입비스트EN",
-  gqkorea:"GQ코리아", cosmopolitan:"코스모폴리탄", vogue:"보그코리아", elle:"엘르코리아",
+const SOURCES = [
+  "인스티즈", "더쿠", "네이트판", "고구마팜",
+  "패션매거진", "KYM", "YouTube", "구글트렌드",
+];
+
+const FLOW_TYPE_LABEL: Record<string, { label: string; tooltip: string }> = {
+  inflow:      { label: "🌐 유입",  tooltip: "해외에서 국내로 유입된 트렌드" },
+  independent: { label: "🇰🇷 독립", tooltip: "국내에서 독립적으로 생성된 밈" },
+  export:      { label: "📤 역수출", tooltip: "국내에서 해외로 역수출된 밈" },
 };
 
-const CAT_LABEL: Record<string,string> = {
-  trend:"트렌드검색어", food:"푸드", celeb:"셀럽",
-  fashion:"패션", travel:"여행", broadcast:"방송및연예", general:"일반",
-};
-
-const CAT_COLOR: Record<string,string> = {
-  trend:"#f97316", food:"#10b981", celeb:"#a78bfa",
-  fashion:"#f43f5e", travel:"#06b6d4", broadcast:"#3b82f6", general:"#6b7280",
-};
-
-function timeAgo(ts: string) {
-  const diff = Date.now() - new Date(ts).getTime();
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  if (h > 24) return Math.floor(h/24)+"일 전";
-  if (h > 0)  return h+"시간 전";
-  return m+"분 전";
+// 스켈레톤 카드
+function SkeletonCard() {
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4 animate-pulse">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-border flex-shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 bg-border rounded w-3/4" />
+          <div className="h-3 bg-border rounded w-1/2" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-const PAGE_SIZE = 50;
+export default function Dashboard() {
+  const [memes, setMemes]             = useState<Meme[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [tab, setTab]                 = useState<Tab>("all");
+  const [search, setSearch]           = useState("");
+  const [lastUpdated, setLastUpdated] = useState("");
 
-export default function Page() {
-  const [platform,   setPlatform]  = useState<PlatformFilter>("all");
-  const [content,    setContent]   = useState<"all"|"video"|"article">("all");
-  const [category,   setCategory]  = useState("all");
-  const [sort,       setSort]      = useState<SortKey>("view_count");
-  const [memes,      setMemes]     = useState<Meme[]>([]);
-  const [stats,      setStats]     = useState({total:0, domestic:0, inflow:0});
-  const [loading,    setLoading]   = useState(true);
-  const [page,       setPage]      = useState(0);
-  const [totalCount, setTotal]     = useState(0);
-  const [search,     setSearch]    = useState("");
+  const fetchMemes = useCallback(async () => {
+    setLoading(true);
+    let query = supabase
+      .from("memes")
+      .select("*")
+      .order("collected_at", { ascending: false })
+      .limit(200);
 
-  // 통계
-  useEffect(() => {
-    async function s() {
-      const [t, d, inf] = await Promise.all([
-        supabase.from("memes").select("*",{count:"exact",head:true}),
-        supabase.from("memes").select("*",{count:"exact",head:true}).eq("platform","domestic"),
-        supabase.from("memes").select("*",{count:"exact",head:true}).eq("flow_type","inflow"),
-      ]);
-      setStats({total:t.count||0, domestic:d.count||0, inflow:inf.count||0});
+    if (tab === "domestic") {
+      query = query.eq("platform", "domestic");
+    } else if (tab === "inflow") {
+      query = query.eq("flow_type", "inflow");
     }
-    s();
-  }, []);
 
-  // 목록
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const cutoff = new Date(Date.now() - 48*3600000).toISOString();
-      let q = supabase.from("memes")
-        .select("*",{count:"exact"})
-        .gte("collected_at", cutoff)
-        .order(sort, {ascending: false});
+    const { data } = await query;
+    setMemes(data || []);
+    setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
+    setLoading(false);
+  }, [tab]);
 
-      if (platform === "domestic") q = q.eq("platform", "domestic");
-      if (platform === "inflow")   q = q.eq("flow_type", "inflow");
-      if (content === "video")     q = q.in("source", Array.from(VIDEO_SOURCES));
-      if (content === "article")   q = q.in("source", Array.from(ARTICLE_SOURCES));
-      if (category !== "all")      q = q.eq("category", category);
-      if (search)                  q = q.ilike("title", `%${search}%`);
+  useEffect(() => { fetchMemes(); }, [fetchMemes]);
 
-      q = q.range(page*PAGE_SIZE, (page+1)*PAGE_SIZE-1);
-      const {data, count} = await q;
-      setMemes(data||[]);
-      setTotal(count||0);
-      setLoading(false);
-    }
-    load();
-  }, [platform, content, category, sort, page, search]);
+  const filtered = memes.filter(m =>
+    search ? m.title.toLowerCase().includes(search.toLowerCase()) : true
+  );
 
-  function change<T>(setter: (v:T)=>void, val:T) {
-    setter(val); setPage(0);
-  }
-
-  const totalPages = Math.ceil(totalCount/PAGE_SIZE);
-  const bg="#0a0a0a", surface="#111111", border="#1e1e1e", dim="#6b6b6b", soft="#a0a0a0", primary="#e8e8e8";
-  const inflowColor = "#f59e0b";
+  const stats = {
+    total:  memes.length,
+    domestic: memes.filter(m => m.platform === "domestic").length,
+    inflow: memes.filter(m => m.flow_type === "inflow").length,
+  };
 
   return (
-    <div style={{background:bg,minHeight:"100vh",color:primary,fontFamily:"monospace"}}>
-      <div style={{borderBottom:`1px solid ${border}`,padding:"1rem 1.5rem",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:bg,zIndex:10}}>
-        <span style={{fontSize:"1.1rem"}}>밈레이더</span>
-        <span style={{fontSize:"0.75rem",color:dim}}>{new Date().toLocaleTimeString("ko-KR")}</span>
-      </div>
+    <div className="min-h-screen bg-bg text-primary">
 
-      <div style={{maxWidth:"900px",margin:"0 auto",padding:"2rem 1.5rem"}}>
-
-        {/* 통계 */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"0.75rem",marginBottom:"1.5rem"}}>
-          {[
-            {label:"전체 수집",  value:stats.total,    color:primary},
-            {label:"국내",       value:stats.domestic, color:"#10b981"},
-            {label:"해외 유입",  value:stats.inflow,   color:inflowColor},
-          ].map(x=>(
-            <div key={x.label} style={{background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"1rem"}}>
-              <div style={{fontSize:"0.7rem",color:dim,marginBottom:"0.25rem"}}>{x.label}</div>
-              <div style={{fontSize:"1.5rem",fontWeight:300,color:x.color}}>{x.value.toLocaleString()}</div>
-            </div>
-          ))}
+      {/* 헤더 */}
+      <header className="border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 bg-bg z-10">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-lg tracking-tight">밈레이더</span>
+          <span className="flex items-center gap-1.5 text-xs text-dim font-mono">
+            <span className="live-dot w-1.5 h-1.5 rounded-full bg-indep inline-block" />
+            LIVE
+          </span>
         </div>
-
-        {/* 플랫폼 탭 */}
-        <div style={{display:"flex",gap:"0.25rem",background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"0.25rem",marginBottom:"0.75rem"}}>
-          {[
-            {key:"all",      label:"전체"},
-            {key:"domestic", label:"국내"},
-            {key:"inflow",   label:"🌐 해외 유입"},
-          ].map(t=>(
-            <button key={t.key} onClick={()=>change(setPlatform, t.key as PlatformFilter)}
-              style={{flex:1,padding:"0.5rem",fontSize:"0.75rem",border:"none",borderRadius:"8px",cursor:"pointer",
-                background:platform===t.key?border:"transparent",
-                color:platform===t.key?(t.key==="inflow"?inflowColor:primary):dim}}>
-              {t.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-4 text-xs text-dim font-mono">
+          <span>업데이트 {lastUpdated}</span>
+          <button
+            onClick={fetchMemes}
+            className="px-3 py-1 border border-border rounded text-soft hover:border-muted hover:text-primary transition-colors"
+          >
+            새로고침
+          </button>
         </div>
+      </header>
 
-        {/* 전체/영상/기사 */}
-        <div style={{display:"flex",gap:"0.25rem",background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"0.25rem",marginBottom:"0.75rem"}}>
-          {[{key:"all",label:"전체"},{key:"video",label:"영상"},{key:"article",label:"기사 및 정보"}].map(t=>(
-            <button key={t.key} onClick={()=>change(setContent,t.key as any)}
-              style={{flex:1,padding:"0.5rem",fontSize:"0.75rem",border:"none",borderRadius:"8px",cursor:"pointer",
-                background:content===t.key?border:"transparent",color:content===t.key?primary:dim}}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <main className="max-w-6xl mx-auto px-6 py-8">
 
-        {/* 카테고리 */}
-        <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
-          {[
-            {key:"all",label:"전체"},
-            {key:"trend",label:"트렌드검색어"},
-            {key:"food",label:"푸드"},
-            {key:"celeb",label:"셀럽"},
-            {key:"fashion",label:"패션"},
-            {key:"travel",label:"여행"},
-            {key:"broadcast",label:"방송및연예"},
-          ].map(t=>{
-            const active = category===t.key;
-            const color  = t.key==="all" ? primary : CAT_COLOR[t.key]||primary;
-            return (
-              <button key={t.key} onClick={()=>change(setCategory,t.key)}
-                style={{padding:"0.35rem 0.75rem",fontSize:"0.7rem",
-                  border:`1px solid ${active?color:border}`,borderRadius:"20px",cursor:"pointer",
-                  background:active?`${color}20`:"transparent",color:active?color:dim}}>
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 정렬 + 검색 */}
-        <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.5rem",alignItems:"center"}}>
-          <input type="text" placeholder="검색..." value={search}
-            onChange={e=>{setSearch(e.target.value);setPage(0);}}
-            style={{flex:1,background:surface,border:`1px solid ${border}`,borderRadius:"12px",
-              padding:"0.75rem 1rem",fontSize:"0.875rem",color:soft,outline:"none",fontFamily:"monospace"}} />
-          <div style={{display:"flex",gap:"0.25rem",background:surface,border:`1px solid ${border}`,borderRadius:"12px",padding:"0.25rem",flexShrink:0}}>
-            {[
-              {key:"view_count",   label:"조회순"},
-              {key:"collected_at", label:"최신순"},
-            ].map(s=>(
-              <button key={s.key} onClick={()=>change(setSort,s.key as SortKey)}
-                style={{padding:"0.4rem 0.75rem",fontSize:"0.7rem",border:"none",borderRadius:"8px",cursor:"pointer",
-                  background:sort===s.key?border:"transparent",color:sort===s.key?primary:dim}}>
-                {s.label}
-              </button>
+        {/* ── 서비스 설명 ── */}
+        <div className="mb-8">
+          <p className="text-sm text-dim font-mono mb-3">
+            국내외 커뮤니티·SNS·검색어를 실시간 수집해 밈·트렌드를 한눈에 보여줍니다
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {SOURCES.map(s => (
+              <span
+                key={s}
+                className="text-xs font-mono px-2 py-1 bg-surface border border-border rounded-lg text-dim"
+              >
+                {s}
+              </span>
             ))}
           </div>
         </div>
 
-        <div style={{fontSize:"0.7rem",color:dim,marginBottom:"1rem",display:"flex",justifyContent:"space-between"}}>
-          <span>48시간 이내</span>
-          <span>{totalCount.toLocaleString()}건 · {page+1}/{totalPages||1}페이지</span>
+        {/* 통계 카드 */}
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {[
+            { label: "전체 수집",  value: stats.total,    color: "#e8e8e8" },
+            { label: "국내",       value: stats.domestic, color: "#10b981" },
+            { label: "해외 유입",  value: stats.inflow,   color: "#3b82f6" },
+          ].map(s => (
+            <div key={s.label} className="bg-surface border border-border rounded-xl p-4 fade-up">
+              <div className="text-xs text-dim font-mono mb-1">{s.label}</div>
+              <div className="text-2xl font-mono font-light" style={{ color: s.color }}>
+                {s.value}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* 해외 유입 탭 안내 */}
-        {platform === "inflow" && (
-          <div style={{fontSize:"0.7rem",color:inflowColor,marginBottom:"1rem",
-            padding:"0.5rem 0.75rem",border:`1px solid ${inflowColor}30`,
-            borderRadius:"8px",background:`${inflowColor}08`}}>
-            🌐 해외에서 먼저 등장해 국내로 유입된 밈이에요
-          </div>
-        )}
+        {/* 플로우 차트 */}
+        <div className="bg-surface border border-border rounded-xl p-4 mb-6">
+          <div className="text-xs text-dim font-mono mb-3">소스별 수집 현황</div>
+          <FlowChart memes={memes} />
+        </div>
 
-        {/* 목록 */}
+        {/* 탭 */}
+        <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex-1 py-2 text-xs font-mono rounded-lg transition-all ${
+                tab === t.key
+                  ? "bg-border text-primary"
+                  : "text-dim hover:text-soft"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 검색 */}
+        <input
+          type="text"
+          placeholder="밈 제목 검색..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm font-mono text-soft placeholder-muted focus:outline-none focus:border-muted mb-4 transition-colors"
+        />
+
+        {/* 밈 목록 */}
         {loading ? (
-          <div style={{textAlign:"center",color:dim,padding:"4rem",fontSize:"0.875rem"}}>로딩 중...</div>
-        ) : memes.length===0 ? (
-          <div style={{textAlign:"center",color:dim,padding:"4rem"}}>
-            <div style={{fontSize:"2rem",marginBottom:"0.75rem"}}>📡</div>
-            <div style={{fontSize:"0.875rem"}}>데이터 없음</div>
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <span className="text-3xl">📭</span>
+            <p className="text-sm text-dim font-mono">
+              {search ? `"${search}"에 해당하는 밈이 없습니다` : "아직 수집된 데이터가 없습니다"}
+            </p>
+            <p className="text-xs text-dim font-mono opacity-60">
+              크롤러가 주기적으로 데이터를 수집합니다
+            </p>
           </div>
         ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-            {memes.map((m,i)=>{
-              const catColor = CAT_COLOR[m.category]||dim;
-              const isVideo  = VIDEO_SOURCES.has(m.source);
-              const isInflow = m.flow_type === "inflow";
-              return (
-                <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
-                  style={{display:"flex",alignItems:"center",gap:"0.75rem",background:surface,
-                    border:`1px solid ${isInflow ? inflowColor+"30" : border}`,
-                    borderRadius:"12px",padding:"0.75rem 1rem",textDecoration:"none"}}
-                  onMouseEnter={e=>(e.currentTarget.style.borderColor=isInflow?inflowColor+"80":"#3a3a3a")}
-                  onMouseLeave={e=>(e.currentTarget.style.borderColor=isInflow?inflowColor+"30":border)}>
-                  <span style={{fontSize:"0.7rem",color:"#3a3a3a",width:"2rem",textAlign:"right",flexShrink:0}}>
-                    {page*PAGE_SIZE+i+1}
-                  </span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:"0.875rem",color:primary,marginBottom:"0.2rem",
-                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      {isVideo && <span style={{color:"#f97316",marginRight:"0.3rem",fontSize:"0.7rem"}}>▶</span>}
-                      {m.title}
-                    </div>
-                    <div style={{fontSize:"0.7rem",color:dim}}>
-                      {SOURCE_LABEL[m.source]||m.source} · {timeAgo(m.collected_at)}
-                      {m.view_count>0 && " · "+m.view_count.toLocaleString()}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:"0.4rem",flexShrink:0}}>
-                    {/* 전체/국내 탭에서만 inflow 뱃지 표시 */}
-                    {isInflow && platform !== "inflow" && (
-                      <span style={{fontSize:"0.65rem",padding:"0.15rem 0.5rem",borderRadius:"4px",
-                        border:`1px solid ${inflowColor}40`,color:inflowColor,
-                        background:`${inflowColor}10`}}>
-                        🌐 유입
-                      </span>
-                    )}
-                    {m.category && m.category!=="general" && (
-                      <span style={{fontSize:"0.65rem",padding:"0.15rem 0.5rem",borderRadius:"4px",
-                        border:`1px solid ${catColor}40`,color:catColor,background:`${catColor}10`}}>
-                        {CAT_LABEL[m.category]||m.category}
-                      </span>
-                    )}
-                  </div>
-                </a>
-              );
-            })}
+          <div className="flex flex-col gap-2">
+            {filtered.map((meme, i) => (
+              <MemeCard
+                key={meme.id}
+                meme={meme}
+                index={i}
+                flowTypeInfo={FLOW_TYPE_LABEL[meme.flow_type || ""] || null}
+              />
+            ))}
           </div>
         )}
-
-        {/* 페이지네이션 */}
-        {totalPages>1 && (
-          <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:"0.5rem",marginTop:"1.5rem"}}>
-            <button onClick={()=>setPage(0)} disabled={page===0}
-              style={{padding:"0.4rem 0.75rem",fontSize:"0.7rem",border:`1px solid ${border}`,
-                borderRadius:"8px",cursor:page===0?"default":"pointer",background:"transparent",
-                color:page===0?dim:primary}}>처음</button>
-            <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
-              style={{padding:"0.4rem 0.75rem",fontSize:"0.75rem",border:`1px solid ${border}`,
-                borderRadius:"8px",cursor:page===0?"default":"pointer",background:"transparent",
-                color:page===0?dim:primary}}>이전</button>
-            <span style={{fontSize:"0.75rem",color:dim,minWidth:"4rem",textAlign:"center"}}>
-              {page+1} / {totalPages}
-            </span>
-            <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page>=totalPages-1}
-              style={{padding:"0.4rem 0.75rem",fontSize:"0.75rem",border:`1px solid ${border}`,
-                borderRadius:"8px",cursor:page>=totalPages-1?"default":"pointer",background:"transparent",
-                color:page>=totalPages-1?dim:primary}}>다음</button>
-            <button onClick={()=>setPage(totalPages-1)} disabled={page>=totalPages-1}
-              style={{padding:"0.4rem 0.75rem",fontSize:"0.7rem",border:`1px solid ${border}`,
-                borderRadius:"8px",cursor:page>=totalPages-1?"default":"pointer",background:"transparent",
-                color:page>=totalPages-1?dim:primary}}>마지막</button>
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   );
 }
