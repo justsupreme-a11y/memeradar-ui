@@ -26,16 +26,22 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "inflow",   label: "🌐 해외 유입" },
 ];
 
-const SOURCES = [
-  "인스티즈", "더쿠", "네이트판", "고구마팜",
-  "패션매거진", "KYM", "YouTube", "구글트렌드",
-];
-
-const FLOW_TYPE_LABEL: Record<string, { label: string; tooltip: string }> = {
-  inflow:      { label: "🌐 유입",  tooltip: "해외에서 국내로 유입된 트렌드" },
-  independent: { label: "🇰🇷 독립", tooltip: "국내에서 독립적으로 생성된 밈" },
-  export:      { label: "📤 역수출", tooltip: "국내에서 해외로 역수출된 밈" },
+const SOURCE_LABEL: Record<string, string> = {
+  gogumafarm:            "고구마팜",
+  google_trends:         "구글트렌드",
+  gqkorea:               "GQ Korea",
+  hypebeast:             "Hypebeast KR",
+  hypebeast_en:          "Hypebeast EN",
+  instiz:                "인스티즈",
+  kym:                   "KYM",
+  pannate:               "네이트판",
+  theqoo:                "더쿠",
+  youtube_channel_hype:  "YouTube 채널",
+  youtube_meme_ch:       "YouTube 밈채널",
+  youtube_trending_hype: "YouTube 트렌딩",
 };
+
+const SOURCES = Object.values(SOURCE_LABEL);
 
 // 스켈레톤 카드
 function SkeletonCard() {
@@ -205,7 +211,7 @@ export default function Dashboard() {
                 key={meme.id}
                 meme={meme}
                 index={i}
-                flowTypeInfo={FLOW_TYPE_LABEL[meme.flow_type || ""] || null}
+                sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
               />
             ))}
           </div>
