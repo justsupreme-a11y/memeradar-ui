@@ -16,11 +16,14 @@ type Meme = {
   like_count: number;
   flow_type: string | null;
   velocity_score: number | null;
+  category: string | null;
   collected_at: string;
 };
 
-type Tab = "all" | "domestic" | "inflow";
-type Period = "1d" | "3d" | "7d";
+type Tab      = "all" | "domestic" | "inflow";
+type Period   = "1d" | "3d" | "7d";
+type Category = "all" | "trend" | "general" | "food" | "celeb" | "fashion" | "travel" | "broadcast" | "fb";
+type Sort     = "latest" | "views" | "hot";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all",      label: "전체" },
@@ -39,6 +42,24 @@ const PERIOD_HOURS: Record<Period, number> = {
   "3d": 72,
   "7d": 168,
 };
+
+const CATEGORIES: { key: Category; label: string }[] = [
+  { key: "all",       label: "전체"     },
+  { key: "trend",     label: "트렌드"   },
+  { key: "general",   label: "일반"     },
+  { key: "food",      label: "푸드"     },
+  { key: "celeb",     label: "셀럽"     },
+  { key: "fashion",   label: "패션"     },
+  { key: "travel",    label: "여행"     },
+  { key: "broadcast", label: "방송·연예" },
+  { key: "fb",        label: "F&B"      },
+];
+
+const SORTS: { key: Sort; label: string }[] = [
+  { key: "latest", label: "최신순" },
+  { key: "views",  label: "조회순" },
+  { key: "hot",    label: "🔥 핫한순" },
+];
 
 const SOURCE_LABEL: Record<string, string> = {
   gogumafarm:            "고구마팜",
@@ -77,6 +98,8 @@ export default function Dashboard() {
   const [loading, setLoading]         = useState(true);
   const [tab, setTab]                 = useState<Tab>("all");
   const [period, setPeriod]           = useState<Period>("1d");
+  const [category, setCategory]       = useState<Category>("all");
+  const [sort, setSort]               = useState<Sort>("latest");
   const [search, setSearch]           = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
 
@@ -87,11 +110,15 @@ export default function Dashboard() {
       Date.now() - PERIOD_HOURS[period] * 60 * 60 * 1000
     ).toISOString();
 
+    // 정렬 컬럼 결정 — 핫한순은 클라이언트에서 velocity_score로 처리
+    const orderCol  = sort === "views" ? "view_count" : "collected_at";
+    const ascending = false;
+
     let query = supabase
       .from("memes")
       .select("*")
       .gte("collected_at", since)
-      .order("collected_at", { ascending: false })
+      .order(orderCol, { ascending })
       .limit(200);
 
     if (tab === "domestic") {
@@ -100,17 +127,24 @@ export default function Dashboard() {
       query = query.eq("flow_type", "inflow");
     }
 
+    if (category !== "all") {
+      query = query.eq("category", category);
+    }
+
     const { data } = await query;
     setMemes(data || []);
     setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
     setLoading(false);
-  }, [tab, period]);
+  }, [tab, period, category, sort]);
 
   useEffect(() => { fetchMemes(); }, [fetchMemes]);
 
-  const filtered = memes.filter(m =>
-    search ? m.title.toLowerCase().includes(search.toLowerCase()) : true
-  );
+  const filtered = memes
+    .filter(m => search ? m.title.toLowerCase().includes(search.toLowerCase()) : true)
+    .sort((a, b) => {
+      if (sort === "hot") return (b.velocity_score || 0) - (a.velocity_score || 0);
+      return 0; // latest/views는 Supabase에서 이미 정렬됨
+    });
 
   // velocity_score 최대값 기준 1~5 등급 계산
   const maxVelocity = Math.max(...memes.map(m => m.velocity_score || 0), 1);
@@ -206,21 +240,61 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* 기간 필터 */}
-        <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1 w-fit">
-          {PERIODS.map(p => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={`px-4 py-1.5 text-xs font-mono rounded-lg transition-all ${
-                period === p.key
-                  ? "bg-border text-primary"
-                  : "text-dim hover:text-soft"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        {/* 카테고리 + 기간 + 정렬 — 한 줄 */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+
+          {/* 카테고리 */}
+          <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 flex-wrap">
+            {CATEGORIES.map(c => (
+              <button
+                key={c.key}
+                onClick={() => setCategory(c.key)}
+                className={`px-3 py-1.5 text-xs font-mono rounded-lg transition-all ${
+                  category === c.key
+                    ? "bg-border text-primary"
+                    : "text-dim hover:text-soft"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 ml-auto">
+            {/* 기간 */}
+            <div className="flex gap-1 bg-surface border border-border rounded-xl p-1">
+              {PERIODS.map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => setPeriod(p.key)}
+                  className={`px-3 py-1.5 text-xs font-mono rounded-lg transition-all ${
+                    period === p.key
+                      ? "bg-border text-primary"
+                      : "text-dim hover:text-soft"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 정렬 */}
+            <div className="flex gap-1 bg-surface border border-border rounded-xl p-1">
+              {SORTS.map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => setSort(s.key)}
+                  className={`px-3 py-1.5 text-xs font-mono rounded-lg transition-all ${
+                    sort === s.key
+                      ? "bg-border text-primary"
+                      : "text-dim hover:text-soft"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* 검색 */}
