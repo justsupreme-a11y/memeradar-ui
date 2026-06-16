@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import MemeCard from "./components/MemeCard";
-import MemeDrawer from "./components/MemeDrawer";
+import MemeDrawer from "./components/Memedrawer";
 import FlowChart from "./components/FlowChart";
 
 type Meme = {
