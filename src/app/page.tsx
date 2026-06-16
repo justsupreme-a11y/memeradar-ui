@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import MemeCard from "./components/MemeCard";
+import MemeDrawer from "./components/MemeDrawer";
 import FlowChart from "./components/FlowChart";
 
 type Meme = {
@@ -102,6 +103,7 @@ export default function Dashboard() {
   const [sort, setSort]               = useState<Sort>("latest");
   const [search, setSearch]           = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
+  const [selectedMeme, setSelectedMeme] = useState<Meme | null>(null);
 
   const fetchMemes = useCallback(async () => {
     setLoading(true);
@@ -332,11 +334,20 @@ export default function Dashboard() {
                 index={i}
                 sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
                 velocityGrade={velocityGrade(meme.velocity_score)}
+                onClick={() => setSelectedMeme(meme)}
               />
             ))}
           </div>
         )}
       </main>
+
+      {/* 드로어 */}
+      <MemeDrawer
+        meme={selectedMeme}
+        sourceLabel={selectedMeme ? (SOURCE_LABEL[selectedMeme.source] || selectedMeme.source) : ""}
+        velocityGrade={selectedMeme ? velocityGrade(selectedMeme.velocity_score) : 0}
+        onClose={() => setSelectedMeme(null)}
+      />
     </div>
   );
 }
