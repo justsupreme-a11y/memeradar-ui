@@ -75,6 +75,11 @@ const SOURCE_LABEL: Record<string, string> = {
   youtube_channel_hype:  "YouTube 채널",
   youtube_meme_ch:       "YouTube 밈채널",
   youtube_trending_hype: "YouTube 트렌딩",
+  humoruniv:             "웃긴대학",
+  naver:                 "네이버 검색",
+  naver_datalab:         "네이버 데이터랩",
+  naver_realtime:        "네이버 실검",
+  giphy:                 "Giphy",
 };
 
 const SOURCES = Object.values(SOURCE_LABEL);
