@@ -21,7 +21,12 @@ type Meme = {
   velocity_score: number | null;
   category: string | null;
   collected_at: string;
-  extra?: { video_id?: string; description?: string } | null;
+  extra?: {
+    video_id?: string;
+    description?: string;
+    cross_verified?: boolean;
+    matched_trends?: string[];
+  } | null;
 };
 
 type Tab      = "all" | "domestic" | "inflow";
