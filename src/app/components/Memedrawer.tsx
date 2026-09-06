@@ -47,7 +47,7 @@ function VelocityBar({ grade }: { grade: number }) {
   const labels = ["", "미온", "확산", "상승", "급상승", "폭발"];
   const colors  = ["", "#6b6b6b", "#eab308", "#eab308", "#f97316", "#f97316"];
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 shrink-0">
       <span className="text-xs font-mono text-dim">확산 속도</span>
       <div className="flex gap-0.5">
         {Array.from({ length: 5 }).map((_, i) => (
@@ -157,13 +157,15 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
         <div className="overflow-y-auto flex-1 px-5 py-4 flex flex-col gap-5">
 
           {/* 제목 */}
-          <h2 className="text-base font-medium text-primary leading-snug">
+          <h2 className="text-base font-medium text-primary leading-snug shrink-0">
             {meme.title}
           </h2>
 
-          {/* 유튜브: 원문 이동 없이 바로 재생 */}
+          {/* 유튜브: 원문 이동 없이 바로 재생 — shrink-0 없으면 모바일에서
+              내용이 드로어 높이를 넘길 때 flex가 영상 영역을 찌그러뜨려
+              재생 버튼이 안 보이는 문제 발생 */}
           {videoId ? (
-            <div className="rounded-xl overflow-hidden bg-surface border border-border aspect-video">
+            <div className="rounded-xl overflow-hidden bg-surface border border-border aspect-video shrink-0">
               <iframe
                 src={`https://www.youtube.com/embed/${videoId}`}
                 title={meme.title}
@@ -173,7 +175,7 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
               />
             </div>
           ) : meme.image_url ? (
-            <div className="rounded-xl overflow-hidden bg-surface border border-border">
+            <div className="rounded-xl overflow-hidden bg-surface border border-border shrink-0">
               <img
                 src={meme.image_url}
                 alt={meme.title}
@@ -185,13 +187,13 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
 
           {/* 설명 — 원문을 열지 않아도 내용을 파악할 수 있도록 */}
           {description && (
-            <p className="text-sm text-soft leading-relaxed whitespace-pre-line">
+            <p className="text-sm text-soft leading-relaxed whitespace-pre-line shrink-0">
               {description}
             </p>
           )}
 
           {/* 메타 정보 */}
-          <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-3">
+          <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shrink-0">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-dim">소스</span>
               <span className="text-soft">{sourceLabel}</span>
