@@ -21,6 +21,7 @@ type Meme = {
   velocity_score: number | null;
   category: string | null;
   collected_at: string;
+  extra?: { video_id?: string; description?: string } | null;
 };
 
 type Tab      = "all" | "domestic" | "inflow";
@@ -78,12 +79,14 @@ const SOURCE_LABEL: Record<string, string> = {
   youtube_meme_ch:       "YouTube 밈채널",
   youtube_trending_hype: "YouTube 트렌딩",
   humoruniv:             "웃긴대학",
-  naver:                 "네이버 검색",
   naver_datalab:         "네이버 데이터랩",
   naver_realtime:        "네이버 실검",
   giphy:                 "Giphy",
 };
 
+// naver(검색 API) 소스는 2026-09 제거 — sort=date 키워드 검색이라 관련성 필터가
+// 없고 카페/블로그 검색 특성상 썸네일도 없어 실제 밈이 아닌 정보성 글까지 섞여 품질 미달.
+// 라벨은 제거하되 크롤러 비활성화 이전 수집분은 7일 기간 필터가 지나면 자연 소멸.
 const SOURCES = Object.values(SOURCE_LABEL);
 
 // 개별 게시물이 아니라 "검색어 + 수치" 시그널인 소스 — 메인 피드(그리드/리스트)에서
@@ -114,6 +117,9 @@ export default function Dashboard() {
   const [search, setSearch]           = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const [selectedMeme, setSelectedMeme] = useState<Meme | null>(null);
+  // 모바일에서 텍스트 리스트가 그리드 전체 아래에 있어 도달까지 스크롤이
+  // 지나치게 길어지는 문제 — 뷰 자체를 탭으로 분리 (데스크톱은 기존 스택 유지)
+  const [mobileView, setMobileView] = useState<"image" | "text">("image");
 
   const fetchMemes = useCallback(async () => {
     setLoading(true);
@@ -353,8 +359,36 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {/* 모바일 전용 이미지/텍스트 뷰 전환 — 데스크톱은 두 섹션 모두 스택 노출되므로 불필요 */}
+            {withImage.length > 0 && textOnly.length > 0 && (
+              <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1 sm:hidden">
+                {(
+                  [
+                    { key: "image" as const, label: `이미지 · ${withImage.length}` },
+                    { key: "text"  as const, label: `텍스트 · ${textOnly.length}` },
+                  ]
+                ).map(v => (
+                  <button
+                    key={v.key}
+                    onClick={() => setMobileView(v.key)}
+                    className={`flex-1 py-2 text-xs font-mono rounded-lg transition-all ${
+                      mobileView === v.key
+                        ? "bg-border text-primary"
+                        : "text-dim hover:text-soft"
+                    }`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {withImage.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div
+                className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 ${
+                  mobileView === "text" ? "hidden sm:grid" : ""
+                }`}
+              >
                 {withImage.map((meme, i) => (
                   <MemeCard
                     key={meme.id}
@@ -369,7 +403,11 @@ export default function Dashboard() {
             )}
 
             {textOnly.length > 0 && (
-              <div className={withImage.length > 0 ? "mt-8" : ""}>
+              <div
+                className={`${withImage.length > 0 ? "sm:mt-8" : ""} ${
+                  mobileView === "image" ? "hidden sm:block" : ""
+                }`}
+              >
                 <div className="text-xs text-dim font-mono mb-2">
                   텍스트 게시물 · {textOnly.length}건
                 </div>
