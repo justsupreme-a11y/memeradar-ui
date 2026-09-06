@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import MemeCard from "./components/MemeCard";
 import MemeDrawer from "./components/Memedrawer";
 import FlowChart from "./components/FlowChart";
+import TextListRow from "./components/TextListRow";
+import TrendTicker from "./components/TrendTicker";
 
 type Meme = {
   id: number;
@@ -84,6 +86,10 @@ const SOURCE_LABEL: Record<string, string> = {
 
 const SOURCES = Object.values(SOURCE_LABEL);
 
+// 개별 게시물이 아니라 "검색어 + 수치" 시그널인 소스 — 메인 피드(그리드/리스트)에서
+// 제외하고 별도 트렌드 티커로 노출 (링크를 눌러도 콘텐츠가 없어 다른 소스와 성격이 다름)
+const TREND_SOURCES = new Set(["google_trends", "naver_datalab", "naver_realtime"]);
+
 // 스켈레톤 카드 — 그리드 카드와 동일한 비율(썸네일 + 텍스트)로 레이아웃 시프트 방지
 function SkeletonCard() {
   return (
@@ -145,12 +151,25 @@ export default function Dashboard() {
 
   useEffect(() => { fetchMemes(); }, [fetchMemes]);
 
-  const filtered = memes
+  // 트렌드 시그널(검색어+수치)과 실제 콘텐츠(게시물·짤·영상)를 분리
+  const trendMemes   = memes.filter(m => TREND_SOURCES.has(m.source));
+  const contentMemes = memes.filter(m => !TREND_SOURCES.has(m.source));
+
+  const filtered = contentMemes
     .filter(m => search ? m.title.toLowerCase().includes(search.toLowerCase()) : true)
     .sort((a, b) => {
       if (sort === "hot") return (b.velocity_score || 0) - (a.velocity_score || 0);
       return 0; // latest/views는 Supabase에서 이미 정렬됨
     });
+
+  // 썸네일 유무로 그리드(이미지)와 리스트(텍스트)를 분리 —
+  // 썸네일 없는 항목이 그리드에 섞이면 빈 박스가 대량으로 노출되는 문제 방지
+  const withImage = filtered.filter(m => !!m.image_url);
+  const textOnly  = filtered.filter(m => !m.image_url);
+
+  const trendTop = [...trendMemes]
+    .sort((a, b) => (b.view_count || 0) - (a.view_count || 0))
+    .slice(0, 16);
 
   // velocity_score 최대값 기준 1~5 등급 계산
   const maxVelocity = Math.max(...memes.map(m => m.velocity_score || 0), 1);
@@ -228,6 +247,9 @@ export default function Dashboard() {
           <div className="text-xs text-dim font-mono mb-3">소스별 수집 현황</div>
           <FlowChart memes={memes} />
         </div>
+
+        {/* 실시간 트렌드 키워드 — 검색어+수치 시그널, 콘텐츠 피드와 분리 */}
+        {!loading && <TrendTicker items={trendTop} />}
 
         {/* 탭 */}
         <div className="flex gap-1 mb-3 bg-surface border border-border rounded-xl p-1">
@@ -312,7 +334,7 @@ export default function Dashboard() {
           className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm font-mono text-soft placeholder-muted focus:outline-none focus:border-muted mb-4 transition-colors"
         />
 
-        {/* 밈 목록 — 그리드 카드 */}
+        {/* 밈 목록 — 썸네일 있는 소스는 그리드, 없는 소스는 텍스트 리스트로 분리 */}
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -330,18 +352,40 @@ export default function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-            {filtered.map((meme, i) => (
-              <MemeCard
-                key={meme.id}
-                meme={meme}
-                index={i}
-                sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
-                velocityGrade={velocityGrade(meme.velocity_score)}
-                onClick={() => setSelectedMeme(meme)}
-              />
-            ))}
-          </div>
+          <>
+            {withImage.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {withImage.map((meme, i) => (
+                  <MemeCard
+                    key={meme.id}
+                    meme={meme}
+                    index={i}
+                    sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
+                    velocityGrade={velocityGrade(meme.velocity_score)}
+                    onClick={() => setSelectedMeme(meme)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {textOnly.length > 0 && (
+              <div className={withImage.length > 0 ? "mt-8" : ""}>
+                <div className="text-xs text-dim font-mono mb-2">
+                  텍스트 게시물 · {textOnly.length}건
+                </div>
+                <div className="flex flex-col gap-2">
+                  {textOnly.map(meme => (
+                    <TextListRow
+                      key={meme.id}
+                      meme={meme}
+                      sourceLabel={SOURCE_LABEL[meme.source] || meme.source}
+                      onClick={() => setSelectedMeme(meme)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </main>
 
