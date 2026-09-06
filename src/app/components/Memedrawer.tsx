@@ -32,6 +32,7 @@ type Meme = {
   velocity_score: number | null;
   category: string | null;
   collected_at: string;
+  extra?: { video_id?: string; description?: string } | null;
 };
 
 type Props = {
@@ -77,6 +78,10 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
   const drawerRef = useRef<HTMLDivElement>(null);
   const flow      = FLOW_META[meme?.flow_type || ""] || null;
   const category  = CATEGORY_LABEL[meme?.category || ""] || null;
+  // 유튜브 소스는 원문 이탈 없이 드로어 안에서 바로 재생 — 클릭 후에도
+  // 얻는 게 없어 바로 이탈하던 문제를 영상 임베드로 해소
+  const videoId    = meme?.source?.startsWith("youtube") ? meme?.extra?.video_id : "";
+  const description = meme?.extra?.description?.trim();
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -156,8 +161,18 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
             {meme.title}
           </h2>
 
-          {/* 썸네일 */}
-          {meme.image_url && (
+          {/* 유튜브: 원문 이동 없이 바로 재생 */}
+          {videoId ? (
+            <div className="rounded-xl overflow-hidden bg-surface border border-border aspect-video">
+              <iframe
+                src={`https://www.youtube.com/embed/${videoId}`}
+                title={meme.title}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : meme.image_url ? (
             <div className="rounded-xl overflow-hidden bg-surface border border-border">
               <img
                 src={meme.image_url}
@@ -166,6 +181,13 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
                 onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
             </div>
+          ) : null}
+
+          {/* 설명 — 원문을 열지 않아도 내용을 파악할 수 있도록 */}
+          {description && (
+            <p className="text-sm text-soft leading-relaxed whitespace-pre-line">
+              {description}
+            </p>
           )}
 
           {/* 메타 정보 */}
