@@ -34,6 +34,7 @@ type Props = {
     flow_type: string | null;
     category?: string | null;
     collected_at: string;
+    extra?: { cross_verified?: boolean; matched_trends?: string[] } | null;
   };
   index: number;
   sourceLabel: string;
@@ -66,6 +67,8 @@ export default function MemeCard({ meme, index, sourceLabel, velocityGrade, onCl
   const flow = FLOW_META[meme.flow_type || ""] || null;
   const placeholder = CATEGORY_PLACEHOLDER[meme.category || ""] || DEFAULT_PLACEHOLDER;
   const showImage = !!meme.image_url && !imgFailed;
+  const matchedTrends = meme.extra?.matched_trends || [];
+  const crossVerified = !!meme.extra?.cross_verified && matchedTrends.length > 0;
 
   const timeAgo = (ts: string) => {
     const diff = Date.now() - new Date(ts).getTime();
@@ -133,6 +136,17 @@ export default function MemeCard({ meme, index, sourceLabel, velocityGrade, onCl
         {velocityGrade > 0 && (
           <span className="absolute bottom-1.5 left-1.5">
             <VelocityBadge grade={velocityGrade} />
+          </span>
+        )}
+
+        {/* 교차 검증 뱃지 — 실시간 검색어와 동시에 포착된 경우에만 표시 */}
+        {crossVerified && (
+          <span
+            className="absolute bottom-1.5 right-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded-md border backdrop-blur-sm leading-none"
+            style={{ color: "#22d3ee", borderColor: "#22d3ee", backgroundColor: "rgba(0,0,0,0.55)" }}
+            title={`실시간 검색어 "${matchedTrends.join(", ")}"와 동시 포착`}
+          >
+            ✅ 검증
           </span>
         )}
       </div>
