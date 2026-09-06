@@ -24,6 +24,7 @@ type Props = {
     view_count: number;
     category?: string | null;
     collected_at: string;
+    extra?: { cross_verified?: boolean; matched_trends?: string[] } | null;
   };
   sourceLabel: string;
   onClick: () => void;
@@ -32,6 +33,8 @@ type Props = {
 export default function TextListRow({ meme, sourceLabel, onClick }: Props) {
   const [copied, setCopied] = useState(false);
   const dot = CATEGORY_DOT[meme.category || ""] || "#3a3a3a";
+  const matchedTrends = meme.extra?.matched_trends || [];
+  const crossVerified = !!meme.extra?.cross_verified && matchedTrends.length > 0;
 
   const timeAgo = (ts: string) => {
     const diff = Date.now() - new Date(ts).getTime();
@@ -60,6 +63,14 @@ export default function TextListRow({ meme, sourceLabel, onClick }: Props) {
         style={{ backgroundColor: dot }}
       />
       <p className="flex-1 min-w-0 text-sm text-primary group-hover:text-white transition-colors truncate">
+        {crossVerified && (
+          <span
+            className="mr-1 text-[11px]"
+            title={`실시간 검색어 "${matchedTrends.join(", ")}"와 동시 포착`}
+          >
+            ✅
+          </span>
+        )}
         {meme.title}
       </p>
       <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-dim flex-shrink-0">
