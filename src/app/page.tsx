@@ -79,16 +79,15 @@ const SOURCE_LABEL: Record<string, string> = {
 
 const SOURCES = Object.values(SOURCE_LABEL);
 
-// 스켈레톤 카드
+// 스켈레톤 카드 — 그리드 카드와 동일한 비율(썸네일 + 텍스트)로 레이아웃 시프트 방지
 function SkeletonCard() {
   return (
-    <div className="bg-surface border border-border rounded-xl p-4 animate-pulse">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-border flex-shrink-0" />
-        <div className="flex-1 space-y-2">
-          <div className="h-4 bg-border rounded w-3/4" />
-          <div className="h-3 bg-border rounded w-1/2" />
-        </div>
+    <div className="bg-surface border border-border rounded-xl overflow-hidden animate-pulse">
+      <div className="w-full aspect-[4/3] bg-border" />
+      <div className="px-3 py-2.5 space-y-2">
+        <div className="h-3.5 bg-border rounded w-full" />
+        <div className="h-3.5 bg-border rounded w-2/3" />
+        <div className="h-3 bg-border rounded w-1/3 mt-1" />
       </div>
     </div>
   );
@@ -308,10 +307,10 @@ export default function Dashboard() {
           className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm font-mono text-soft placeholder-muted focus:outline-none focus:border-muted mb-4 transition-colors"
         />
 
-        {/* 밈 목록 */}
+        {/* 밈 목록 — 그리드 카드 */}
         {loading ? (
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: 6 }).map((_, i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            {Array.from({ length: 8 }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
           </div>
@@ -326,7 +325,7 @@ export default function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {filtered.map((meme, i) => (
               <MemeCard
                 key={meme.id}
