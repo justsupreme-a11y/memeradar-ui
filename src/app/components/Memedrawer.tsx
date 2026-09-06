@@ -32,7 +32,12 @@ type Meme = {
   velocity_score: number | null;
   category: string | null;
   collected_at: string;
-  extra?: { video_id?: string; description?: string } | null;
+  extra?: {
+    video_id?: string;
+    description?: string;
+    cross_verified?: boolean;
+    matched_trends?: string[];
+  } | null;
 };
 
 type Props = {
@@ -82,6 +87,8 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
   // 얻는 게 없어 바로 이탈하던 문제를 영상 임베드로 해소
   const videoId    = meme?.source?.startsWith("youtube") ? meme?.extra?.video_id : "";
   const description = meme?.extra?.description?.trim();
+  const matchedTrends = meme?.extra?.matched_trends || [];
+  const crossVerified = !!meme?.extra?.cross_verified && matchedTrends.length > 0;
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -142,6 +149,15 @@ export default function MemeDrawer({ meme, sourceLabel, velocityGrade, onClose }
                 style={{ color: flow.color, borderColor: flow.color, backgroundColor: flow.color + "18" }}
               >
                 {flow.label}
+              </span>
+            )}
+            {crossVerified && (
+              <span
+                className="text-xs font-mono px-2 py-0.5 rounded-md border"
+                style={{ color: "#22d3ee", borderColor: "#22d3ee", backgroundColor: "#22d3ee18" }}
+                title={`실시간 검색어 "${matchedTrends.join(", ")}"와 동시 포착`}
+              >
+                ✅ 검증됨 · {matchedTrends[0]}
               </span>
             )}
           </div>
