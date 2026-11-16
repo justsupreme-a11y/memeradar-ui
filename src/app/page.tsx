@@ -7,6 +7,7 @@ import MemeDrawer from "./components/Memedrawer";
 import FlowChart from "./components/FlowChart";
 import TextListRow from "./components/TextListRow";
 import TrendTicker from "./components/TrendTicker";
+import DailyPicks from "./components/DailyPicks";
 
 type Meme = {
   id: number;
@@ -97,6 +98,28 @@ const SOURCES = Object.values(SOURCE_LABEL);
 // 개별 게시물이 아니라 "검색어 + 수치" 시그널인 소스 — 메인 피드(그리드/리스트)에서
 // 제외하고 별도 트렌드 티커로 노출 (링크를 눌러도 콘텐츠가 없어 다른 소스와 성격이 다름)
 const TREND_SOURCES = new Set(["google_trends", "naver_datalab", "naver_realtime"]);
+
+// ── "오늘의 찐밈" 선정 가중치 (2026-11) ──────────────────────────────
+// 소스를 16개나 섞다 보니 라이프스타일 매거진·일반 트렌딩 영상까지 "밈"으로
+// 노출되어 정체성이 흐려진다는 피드백 반영. raw 피드 구조는 그대로 두고,
+// 유머 커뮤니티·밈채널 비중 + 확산 속도 + 실시간 검색어 교차검증을 가중해
+// 상위 5건만 먼저 보여주는 에디토리얼 레이어를 얹는다.
+const SOURCE_FIT_WEIGHT: Record<string, number> = {
+  // 진짜 밈·유머 커뮤니티
+  kym: 1.5, humoruniv: 1.5, theqoo: 1.5, pannate: 1.5, instiz: 1.5,
+  youtube_meme_ch: 1.5, giphy: 1.4, gogumafarm: 1.3,
+  // 큐레이션된 채널 하이프 — 믿을 만하지만 커뮤니티보단 한 단계 낮게
+  youtube_channel_hype: 1.2,
+  // 일반 유튜브 트렌딩 — 공식 MV·예고편 등 비(非)밈 콘텐츠가 섞여 있어 더 낮게
+  youtube_trending_hype: 0.8,
+  // 라이프스타일 매거진 — 밈이 아니라 뉴스성 콘텐츠라 최하위
+  gqkorea: 0.3, hypebeast: 0.3, hypebeast_en: 0.3,
+};
+const DEFAULT_FIT_WEIGHT = 0.6;
+
+// youtube_trending_hype은 일반 인기차트라 공식 뮤비·게임/영화 예고편이 섞임 —
+// "밈"으로 보기 어려운 이 패턴은 오늘의 찐밈 후보에서 1차로 제외
+const NON_MEME_TITLE_PATTERN = /official|m\/v|\bmv\b|music video|trailer|예고편|뮤직비디오|티저|teaser/i;
 
 // 스켈레톤 카드 — 그리드 카드와 동일한 비율(썸네일 + 텍스트)로 레이아웃 시프트 방지
 function SkeletonCard() {
@@ -189,6 +212,40 @@ export default function Dashboard() {
     return Math.ceil((score / maxVelocity) * 5);
   };
 
+  // ── 오늘의 찐밈 Top 5 산출 ──
+  // 점수 = 소스 적합도 가중치 × 정규화된 확산 속도 × 교차검증 보너스.
+  // search 중에는 혼선 방지를 위해 숨기고(아래 렌더에서 처리), 현재 탭/기간/
+  // 카테고리 필터가 적용된 contentMemes 기준으로 계산해 필터와 일관되게 동작.
+  const dailyPickCandidates = contentMemes
+    .filter(m => !(m.source === "youtube_trending_hype" && NON_MEME_TITLE_PATTERN.test(m.title)))
+    .map(m => {
+      const weight = SOURCE_FIT_WEIGHT[m.source] ?? DEFAULT_FIT_WEIGHT;
+      const normVelocity = maxVelocity > 0 ? (m.velocity_score || 0) / maxVelocity : 0;
+      const crossBonus = m.extra?.cross_verified ? 1.3 : 1.0;
+      return { meme: m, fitScore: weight * normVelocity * crossBonus };
+    })
+    .sort((a, b) => b.fitScore - a.fitScore);
+
+  // 소스당 최대 2개 캡 — 유튜브 두 소스가 수집량의 절반 이상이라 캡 없으면
+  // Top 5가 전부 유튜브로 채워져 "큐레이션"의 의미가 없어짐
+  const dailyPicks: Meme[] = [];
+  const dailyPickSourceCount: Record<string, number> = {};
+  for (const { meme } of dailyPickCandidates) {
+    const cnt = dailyPickSourceCount[meme.source] || 0;
+    if (cnt >= 2) continue;
+    dailyPicks.push(meme);
+    dailyPickSourceCount[meme.source] = cnt + 1;
+    if (dailyPicks.length >= 5) break;
+  }
+  // 소스 다양성이 부족해 캡만으로 5개를 못 채운 경우, 점수순으로 나머지 채움
+  if (dailyPicks.length < 5) {
+    for (const { meme } of dailyPickCandidates) {
+      if (dailyPicks.includes(meme)) continue;
+      dailyPicks.push(meme);
+      if (dailyPicks.length >= 5) break;
+    }
+  }
+
   const stats = {
     total:  memes.length,
     domestic: memes.filter(m => m.platform === "domestic").length,
@@ -261,6 +318,17 @@ export default function Dashboard() {
 
         {/* 실시간 트렌드 키워드 — 검색어+수치 시그널, 콘텐츠 피드와 분리 */}
         {!loading && <TrendTicker items={trendTop} />}
+
+        {/* 오늘의 찐밈 — raw 피드 전체를 훑지 않아도 되는 에디토리얼 큐레이션 레이어.
+            검색 중에는 혼선 방지를 위해 숨김 */}
+        {!loading && !search && (
+          <DailyPicks
+            picks={dailyPicks}
+            sourceLabel={s => SOURCE_LABEL[s] || s}
+            velocityGrade={velocityGrade}
+            onClick={setSelectedMeme}
+          />
+        )}
 
         {/* 탭 */}
         <div className="flex gap-1 mb-3 bg-surface border border-border rounded-xl p-1">
